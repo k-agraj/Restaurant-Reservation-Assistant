@@ -1,0 +1,1102 @@
+{
+  "name": "🍽️ Restaurant Reservation Agent — reservation@agrajk.com",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "mailbox": "INBOX",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "forceReconnect": true
+        }
+      },
+      "id": "1a2b3c4d-0001-0001-0001-000000000001",
+      "name": "📧 Watch Inbox",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [200, 400],
+      "credentials": {
+        "imap": { "id": "CRED_IMAP", "name": "reservation@agrajk.com IMAP" }
+      },
+      "notes": "Polls reservation@agrajk.com every minute. Set poll interval to 5 min in production to save resources."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract email metadata for downstream nodes\nconst item = $input.first();\nconst email = item.json;\n\nreturn [{\n  json: {\n    subject: email.subject || '',\n    body: email.text || email.html || '',\n    fromEmail: email.from?.value?.[0]?.address || email.from || '',\n    fromName: email.from?.value?.[0]?.name || '',\n    messageId: email.messageId || '',\n    inReplyTo: email.inReplyTo || '',\n    references: email.references || '',\n    date: email.date || new Date().toISOString(),\n    rawFrom: JSON.stringify(email.from)\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0002-0002-0002-000000000002",
+      "name": "📝 Extract Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "model": "claude-haiku-4-5-20251001",
+        "options": { "temperature": 0 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are an intent classifier for a restaurant reservation agent. Analyze this email and return ONLY a valid JSON object with no other text.\n\nEmail Subject: {{ $json.subject }}\nEmail Body: {{ $json.body }}\n\nClassify the intent into exactly ONE of these categories:\n1. BOOK_RESERVATION - User wants to book a specific restaurant (has restaurant name + date)\n2. FIND_RESTAURANTS - User wants recommendations based on cuisine/vibe/location\n3. CHECK_AVAILABILITY - User wants to know when a restaurant accepts reservations\n4. REMOVE_WATCHLIST - User wants to remove a restaurant from watch list\n5. OTHER - Anything else\n\nAlso extract these fields if present:\n- restaurant_name (string or null)\n- date (string in YYYY-MM-DD format or null)\n- time_preference (string like '7:00 PM' or null)\n- party_size (number or null)\n- location (string or null)\n- cuisine (string or null)\n- vibe (string or null)\n- price_range (string or null)\n- special_requests (string or null)\n- is_flexible_date (boolean - true if user mentioned flexible dates)\n\nReturn format:\n{\"intent\": \"BOOK_RESERVATION\", \"restaurant_name\": \"...\", \"date\": \"...\", \"time_preference\": \"...\", \"party_size\": 2, \"location\": \"...\", \"cuisine\": null, \"vibe\": null, \"price_range\": null, \"special_requests\": null, \"is_flexible_date\": false}"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0003-0003-0003-000000000003",
+      "name": "🧠 Claude: Parse Intent",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [680, 400],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's JSON response\nconst raw = $input.first().json.text || $input.first().json.content || '';\nlet parsed;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { intent: 'OTHER', error: 'Parse failed: ' + raw };\n}\n\n// Merge with email data from previous step\nconst emailData = $('📝 Extract Email Data').first().json;\n\nreturn [{\n  json: {\n    ...parsed,\n    fromEmail: emailData.fromEmail,\n    fromName: emailData.fromName,\n    messageId: emailData.messageId,\n    inReplyTo: emailData.inReplyTo,\n    references: emailData.references,\n    originalSubject: emailData.subject,\n    originalBody: emailData.body,\n    receivedAt: emailData.date\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0004-0004-0004-000000000004",
+      "name": "🔧 Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "BOOK_RESERVATION",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "book"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "FIND_RESTAURANTS",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "find"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "CHECK_AVAILABILITY",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "check"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "REMOVE_WATCHLIST",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "remove"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "1a2b3c4d-0005-0005-0005-000000000005",
+      "name": "🔀 Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1160, 400]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.serper.dev/search",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-KEY", "value": "={{ $env.SERPER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.restaurant_name }} restaurant {{ $json.location || 'Boston MA' }} reservation booking platform OpenTable Resy SevenRooms Tock"
+            },
+            { "name": "num", "value": "5" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0006-0006-0006-000000000006",
+      "name": "🔍 Find Booking Platform",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 200]
+    },
+    {
+      "parameters": {
+        "model": "claude-haiku-4-5-20251001",
+        "options": { "temperature": 0 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Based on these search results, identify the booking platform for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}.\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,5)) }}\n\nReturn ONLY a JSON object:\n{\"platform\": \"resy|opentable|sevenrooms|tock|yelp|direct|unknown\", \"booking_url\": \"direct URL if found or null\", \"restaurant_confirmed\": true/false, \"notes\": \"any relevant info about the restaurant\"}"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0007-0007-0007-000000000007",
+      "name": "🧠 Claude: Identify Platform",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [1640, 200],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || $input.first().json.content || '';\nlet platformData;\ntry {\n  platformData = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  platformData = { platform: 'unknown', booking_url: null };\n}\n\nconst parsed = $('🔧 Parse Claude Response').first().json;\n\n// Extract OpenTable restaurant ID from booking URL (?rid=12345 or /profile/12345)\nlet opentableId = null;\nif (platformData.platform === 'opentable' && platformData.booking_url) {\n  const ridMatch = platformData.booking_url.match(/rid=(\\d+)/);\n  const profileMatch = platformData.booking_url.match(/\\/profile\\/(\\d+)/);\n  opentableId = ridMatch?.[1] || profileMatch?.[1] || null;\n}\n\nreturn [{\n  json: {\n    ...parsed,\n    platform: platformData.platform,\n    booking_url: platformData.booking_url,\n    restaurant_confirmed: platformData.restaurant_confirmed,\n    platform_notes: platformData.notes,\n    opentable_id: opentableId\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0008-0008-0008-000000000008",
+      "name": "🔧 Parse Platform Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1880, 200]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "resy",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "resy"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "opentable",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "opentable"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "1a2b3c4d-0009-0009-0009-000000000009",
+      "name": "🔀 Route by Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2120, 200]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.resy.com/3/venue/find?query={{ encodeURIComponent($json.restaurant_name) }}&location={{ encodeURIComponent($json.location || 'Boston, MA') }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "ResyAPI api_key=\"vbOpDK1X\"" },
+            { "name": "X-Resy-Auth-Token", "value": "={{ $env.RESY_AUTH_TOKEN }}" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0040-0040-0040-000000000040",
+      "name": "🔍 Resy: Find Venue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2120, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const venueData = $input.first().json;\nconst parsed = $('🔧 Parse Platform Response').first().json;\n\n// Resy search response can nest the venue ID in several ways\nconst venue =\n  venueData.results?.venues?.[0]?.venue ||\n  venueData.hits?.hits?.[0]?._source ||\n  venueData.venues?.[0] ||\n  {};\n\nconst resyVenueId =\n  venue.id?.resy ??\n  venue.id ??\n  venue.venue_id ??\n  null;\n\nreturn [{\n  json: {\n    ...parsed,\n    resy_venue_id: resyVenueId\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0041-0041-0041-000000000041",
+      "name": "🔧 Extract Resy Venue ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2360, 100]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.resy.com/4/find?lat=0&long=0&day={{ $json.date }}&party_size={{ $json.party_size || 2 }}&venue_id={{ $json.resy_venue_id }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "ResyAPI api_key=\"vbOpDK1X\"" },
+            { "name": "X-Resy-Auth-Token", "value": "={{ $env.RESY_AUTH_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0010-0010-0010-000000000010",
+      "name": "🍽️ Check Resy Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2600, 100],
+      "notes": "Uses Resy unofficial API. RESY_AUTH_TOKEN set in n8n environment variables."
+    },
+    {
+      "parameters": {
+        "url": "=https://www.opentable.com/booking/availability/find/v1?restaurantId={{ $json.opentable_id }}&partySize={{ $json.party_size || 2 }}&dateTime={{ $json.date }}T{{ $json.time_preference || '19:00' }}&attributeIds=&isRedemption=false",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "User-Agent", "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0011-0011-0011-000000000011",
+      "name": "🍽️ Check OpenTable Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 300],
+      "notes": "OpenTable availability check. Restaurant ID resolved via Browserless scrape."
+    },
+    {
+      "parameters": {
+        "url": "=https://production-sfo.browserless.io/scrape?token={{ $env.BROWSERLESS_API_TOKEN }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.booking_url, elements: [{selector: 'a[href*=\"resy\"], a[href*=\"opentable\"], .reservation-button, .book-now, [data-testid*=\"book\"]'}], waitFor: 2000 }) }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0012-0012-0012-000000000012",
+      "name": "🌐 Browserless: Scrape Booking Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 500],
+      "notes": "Used when platform is unknown or direct booking. Scrapes the restaurant website to find booking method."
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Check if slots are available from Resy or OpenTable response\nconst data = $input.first().json;\nconst parsed = $('🔧 Parse Platform Response').first().json;\n\n// Resy response structure check\nconst resySlots = data.results?.venues?.[0]?.slots || [];\n// OpenTable response structure check  \nconst otSlots = data.availability?.times || data.slots || [];\n\nconst slots = resySlots.length > 0 ? resySlots : otSlots;\nconst hasAvailability = slots.length > 0;\n\nreturn [{\n  json: {\n    ...parsed,\n    hasAvailability,\n    availableSlots: slots.slice(0, 5),\n    slotCount: slots.length,\n    rawAvailabilityResponse: JSON.stringify(data).substring(0, 500)\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0013-0013-0013-000000000013",
+      "name": "🔧 Check Slot Availability",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 200]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.hasAvailability }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "available"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.hasAvailability }}",
+                    "rightValue": false,
+                    "operator": { "type": "boolean", "operation": "false" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "unavailable"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0014-0014-0014-000000000014",
+      "name": "🔀 Available?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2840, 200]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.resy.com/3/book",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "ResyAPI api_key=\"vbOpDK1X\"" },
+            { "name": "X-Resy-Auth-Token", "value": "={{ $env.RESY_AUTH_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "form",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "book_token", "value": "={{ $json.availableSlots[0]?.config?.token || $json.availableSlots[0]?.token }}" },
+            { "name": "struct_payment_method_id", "value": "={{ $env.RESY_PAYMENT_METHOD_ID }}" },
+            { "name": "source_id", "value": "resy.com-venue-details" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0015-0015-0015-000000000015",
+      "name": "✅ Book on Resy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 100],
+      "notes": "Books the first available slot on Resy using stored payment method."
+    },
+    {
+      "parameters": {
+        "url": "=https://production-sfo.browserless.io/scrape?token={{ $env.BROWSERLESS_API_TOKEN }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify({ url: 'https://www.opentable.com/booking/experiences/create?rid=' + $json.restaurant_id + '&covers=' + ($json.party_size || 2) + '&dateTime=' + $json.date + 'T' + ($json.time_preference || '19:00'), elements: [{selector: '.confirmation-number, .booking-confirmed, [data-testid=\"confirmation\"]'}], waitFor: 5000 }) }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0016-0016-0016-000000000016",
+      "name": "✅ Book on OpenTable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 300],
+      "notes": "Uses Browserless to complete OpenTable booking flow."
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const bookingResponse = $input.first().json;\nconst parsed = $('🔧 Parse Platform Response').first().json;\n\n// Extract confirmation number from response\nconst confirmationNumber = bookingResponse.reservation_id || \n  bookingResponse.resy_token || \n  bookingResponse.data?.[0]?.results?.[0]?.text ||\n  'Confirmed';\n\nconst bookingSuccessful = !!confirmationNumber && !bookingResponse.error;\n\nreturn [{\n  json: {\n    ...parsed,\n    bookingSuccessful,\n    confirmationNumber,\n    bookedSlot: parsed.availableSlots?.[0],\n    bookingTimestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0017-0017-0017-000000000017",
+      "name": "🔧 Parse Booking Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 200]
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.serper.dev/search",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-KEY", "value": "={{ $env.SERPER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=similar restaurants to {{ $json.restaurant_name }} {{ $json.location || 'Boston MA' }} {{ $json.cuisine || '' }} best reviewed 2024 2025 reservations available"
+            },
+            { "name": "num", "value": "8" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0018-0018-0018-000000000018",
+      "name": "🔍 Find Similar Restaurants",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 500]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "options": { "temperature": 0.3 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=The user requested a reservation at {{ $('🔧 Parse Claude Response').first().json.restaurant_name }} but it's unavailable.\n\nSearch results for similar restaurants: {{ JSON.stringify($json.organic?.slice(0,8)) }}\n\nUser preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'similar to requested restaurant' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'similar' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Date: {{ $('🔧 Parse Claude Response').first().json.date }}\n\nReturn ONLY a JSON array of up to 4 alternative restaurants with 4+ star ratings:\n[{\"name\": \"...\", \"cuisine\": \"...\", \"vibe\": \"...\", \"price_range\": \"...\", \"booking_platform\": \"resy|opentable|other\", \"why_similar\": \"one sentence\", \"rating\": \"4.5/5\", \"address\": \"...\"}]"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0019-0019-0019-000000000019",
+      "name": "🧠 Claude: Get Alternatives",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [3320, 500],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "value": "={{ $env.WATCHLIST_SHEET_ID }}", "mode": "id" },
+        "sheetName": { "value": "Watchlist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $now.toMillis() }}",
+            "Restaurant Name": "={{ $json.restaurant_name }}",
+            "Date Requested": "={{ $json.date }}",
+            "Time Preference": "={{ $json.time_preference || 'Flexible' }}",
+            "Party Size": "={{ $json.party_size || 2 }}",
+            "Booking Platform": "={{ $json.platform || 'unknown' }}",
+            "Booking URL": "={{ $json.booking_url || '' }}",
+            "Venue ID": "={{ $json.resy_venue_id || $json.opentable_id || '' }}",
+            "Location": "={{ $json.location || 'Boston MA' }}",
+            "Special Requests": "={{ $json.special_requests || '' }}",
+            "Status": "WATCHING",
+            "Last Checked": "={{ $now.toISO() }}",
+            "Check Count": "0",
+            "Email Thread ID": "={{ $json.messageId }}",
+            "Reply To Email": "={{ $json.fromEmail }}",
+            "Date Added": "={{ $now.toISO() }}",
+            "Remove After Date": "={{ $json.date }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0020-0020-0020-000000000020",
+      "name": "📋 Add to Watchlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [3560, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets" }
+      },
+      "notes": "Adds unavailable restaurant to watchlist for automated retry."
+    },
+
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "options": { "temperature": 0.4 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: BOOKING_CONFIRMED\nRestaurant: {{ $json.restaurant_name }}\nDate: {{ $json.date }}\nTime: {{ $json.bookedSlot?.date?.start || $json.time_preference }}\nParty Size: {{ $json.party_size || 2 }}\nConfirmation: {{ $json.confirmationNumber }}\nPlatform: {{ $json.platform }}\nSpecial Requests: {{ $json.special_requests || 'None' }}\n\nWrite a warm, concise confirmation email. Include all booking details. Sign off as Résa. Keep it under 150 words. Do not use em dashes."
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0021-0021-0021-000000000021",
+      "name": "🧠 Claude: Write Confirmation Email",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [3560, 100],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "options": { "temperature": 0.4 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: UNAVAILABLE_WITH_ALTERNATIVES\nRequested Restaurant: {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}\nDate: {{ $('🔧 Parse Claude Response').first().json.date }}\nAlternatives found: {{ $('🧠 Claude: Get Alternatives').first().json.text || '[]' }}\nAdded to watchlist: YES - will keep checking automatically\n\nWrite a helpful email:\n1. Apologize the requested restaurant is unavailable\n2. Confirm you have added it to the watchlist and will book automatically when a slot opens\n3. List the alternative restaurants with a brief note on each\n4. Keep it under 200 words. Sign off as Résa. Do not use em dashes."
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0022-0022-0022-000000000022",
+      "name": "🧠 Claude: Write Unavailable Email",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [3800, 500],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.serper.dev/search",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-KEY", "value": "={{ $env.SERPER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=best {{ $json.cuisine || '' }} {{ $json.vibe || '' }} restaurants {{ $json.location || 'Boston MA' }} highly rated reservation available 2025"
+            },
+            { "name": "num", "value": "10" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0023-0023-0023-000000000023",
+      "name": "🔍 Search Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 500]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "options": { "temperature": 0.4 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are a concierge assistant named Résa for Agraj.\n\nUser is looking for restaurant recommendations with these preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'any' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'any' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Price range: {{ $('🔧 Parse Claude Response').first().json.price_range || 'similar to requested' }}\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,10)) }}\n\nWrite a friendly recommendation email with 4-5 restaurants that:\n- Have 4+ star ratings\n- Match the cuisine and vibe requested\n- Include: name, cuisine, vibe, price range, booking platform, why recommended\n- Keep it scannable and under 300 words\n- Sign off as Résa\n- Do not use em dashes"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0024-0024-0024-000000000024",
+      "name": "🧠 Claude: Write Recommendations",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [1640, 500],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+
+    {
+      "parameters": {
+        "url": "=https://production-sfo.browserless.io/scrape?token={{ $env.BROWSERLESS_API_TOKEN }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify({ url: 'https://www.google.com/search?q=' + encodeURIComponent($('🔧 Parse Claude Response').first().json.restaurant_name + ' restaurant reservation how far in advance booking window'), elements: [{selector: '.BNeawe, .kCrYT, .UPmit, h3, .VwiC3b'}], waitFor: 2000 }) }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0025-0025-0025-000000000025",
+      "name": "🌐 Check Advance Booking Window",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 700]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-20250514",
+        "options": { "temperature": 0.2 },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Based on these search results, what is the advance booking window for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}?\n\nSearch data: {{ JSON.stringify($json) }}\n\nWrite a concise email reply (under 100 words) explaining:\n1. How far in advance reservations open\n2. What time/day slots typically release\n3. Any tips for securing a reservation\n\nSign off as Résa. Do not use em dashes."
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0026-0026-0026-000000000026",
+      "name": "🧠 Claude: Write Booking Window Reply",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [1640, 700],
+      "credentials": {
+        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+      }
+    },
+
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "value": "={{ $env.WATCHLIST_SHEET_ID }}", "mode": "id" },
+        "sheetName": { "value": "Watchlist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "REMOVED",
+            "Last Checked": "={{ $now.toISO() }}"
+          }
+        },
+        "where": {
+          "values": [
+            {
+              "column": "Restaurant Name",
+              "value": "={{ $json.restaurant_name }}"
+            },
+            {
+              "column": "Reply To Email",
+              "value": "={{ $json.fromEmail }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0027-0027-0027-000000000027",
+      "name": "🗑️ Remove from Watchlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1400, 900],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets" }
+      }
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Collect the email body from whichever Claude node ran\nconst nodes = [\n  '🧠 Claude: Write Confirmation Email',\n  '🧠 Claude: Write Unavailable Email', \n  '🧠 Claude: Write Recommendations',\n  '🧠 Claude: Write Booking Window Reply'\n];\n\nlet emailBody = '';\nfor (const nodeName of nodes) {\n  try {\n    const result = $(nodeName).first();\n    if (result && result.json) {\n      emailBody = result.json.text || result.json.content || '';\n      if (emailBody) break;\n    }\n  } catch(e) { continue; }\n}\n\nif (!emailBody) emailBody = 'Thank you for your message. I have processed your request and will follow up shortly.\\n\\nBest,\\nRésa';\n\n// Get original email data\nlet fromEmail, originalSubject, messageId;\ntry {\n  const emailData = $('📝 Extract Email Data').first().json;\n  fromEmail = emailData.fromEmail;\n  originalSubject = emailData.subject;\n  messageId = emailData.messageId;\n} catch(e) {\n  fromEmail = '';\n  originalSubject = 'Re: Your Reservation Request';\n  messageId = '';\n}\n\nconst reSubject = originalSubject.startsWith('Re:') ? originalSubject : 'Re: ' + originalSubject;\n\nreturn [{\n  json: {\n    toEmail: fromEmail,\n    subject: reSubject,\n    body: emailBody,\n    inReplyTo: messageId\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0028-0028-0028-000000000028",
+      "name": "🔧 Prepare Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4040, 400]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reservation@agrajk.com",
+        "toEmail": "={{ $json.toEmail }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.body }}",
+        "options": {
+          "replyTo": "reservation@agrajk.com"
+        }
+      },
+      "id": "1a2b3c4d-0029-0029-0029-000000000029",
+      "name": "📤 Send Reply",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [4280, 400],
+      "credentials": {
+        "smtp": { "id": "CRED_SMTP", "name": "reservation@agrajk.com SMTP" }
+      }
+    },
+
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 0,9 * * *" }]
+        }
+      },
+      "id": "1a2b3c4d-0030-0030-0030-000000000030",
+      "name": "⏰ Watchlist Scheduler",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 800],
+      "notes": "Runs at midnight and 9 AM daily — peak times restaurants release cancellations."
+    },
+    {
+      "parameters": {
+        "documentId": { "value": "={{ $env.WATCHLIST_SHEET_ID }}", "mode": "id" },
+        "sheetName": { "value": "Watchlist", "mode": "name" },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "WATCHING"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0031-0031-0031-000000000031",
+      "name": "📋 Get Active Watchlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [440, 800],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out watchlist items where the reservation date has passed\nconst today = new Date();\ntoday.setHours(0,0,0,0);\n\nconst items = $input.all();\nconst active = items.filter(item => {\n  const removeDate = item.json['Remove After Date'];\n  if (!removeDate) return true;\n  const targetDate = new Date(removeDate);\n  return targetDate >= today;\n});\n\nreturn active.map(item => ({ json: item.json }));"
+      },
+      "id": "1a2b3c4d-0032-0032-0032-000000000032",
+      "name": "🔧 Filter Expired Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 800]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.resy.com/4/find?lat=0&long=0&day={{ $json['Date Requested'] }}&party_size={{ $json['Party Size'] }}&venue_id={{ $json['Venue ID'] }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "ResyAPI api_key=\"vbOpDK1X\"" },
+            { "name": "X-Resy-Auth-Token", "value": "={{ $env.RESY_AUTH_TOKEN }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0033-0033-0033-000000000033",
+      "name": "🔍 Watchlist: Check Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 800],
+      "notes": "Checks availability for each watchlist item. Loops through all WATCHING entries."
+    },
+    {
+      "parameters": {
+        "jsCode": "const availability = $input.first().json;\nconst watchItem = $('🔧 Filter Expired Items').first().json;\n\nconst slots = availability.results?.venues?.[0]?.slots || \n               availability.availability?.times || [];\nconst hasSlot = slots.length > 0;\n\nreturn [{\n  json: {\n    ...watchItem,\n    hasSlot,\n    availableSlots: slots.slice(0,3),\n    checkedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0034-0034-0034-000000000034",
+      "name": "🔧 Evaluate Watchlist Slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 800]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.hasSlot }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "slot_found"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "1a2b3c4d-0035-0035-0035-000000000035",
+      "name": "🔀 Slot Found?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1400, 800]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.resy.com/3/book",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "ResyAPI api_key=\"vbOpDK1X\"" },
+            { "name": "X-Resy-Auth-Token", "value": "={{ $env.RESY_AUTH_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "form",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "book_token", "value": "={{ $json.availableSlots[0]?.config?.token || $json.availableSlots[0]?.token }}" },
+            { "name": "struct_payment_method_id", "value": "={{ $env.RESY_PAYMENT_METHOD_ID }}" },
+            { "name": "source_id", "value": "resy.com-venue-details" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0036-0036-0036-000000000036",
+      "name": "✅ Watchlist: Book Slot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 700]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "value": "={{ $env.WATCHLIST_SHEET_ID }}", "mode": "id" },
+        "sheetName": { "value": "Watchlist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "BOOKED",
+            "Last Checked": "={{ $now.toISO() }}"
+          }
+        },
+        "where": {
+          "values": [
+            { "column": "ID", "value": "={{ $json.ID }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0037-0037-0037-000000000037",
+      "name": "📋 Update Watchlist: Booked",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1880, 700],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "value": "={{ $env.WATCHLIST_SHEET_ID }}", "mode": "id" },
+        "sheetName": { "value": "Watchlist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Last Checked": "={{ $now.toISO() }}",
+            "Check Count": "={{ (parseInt($json['Check Count'] || '0') + 1).toString() }}"
+          }
+        },
+        "where": {
+          "values": [
+            { "column": "ID", "value": "={{ $json.ID }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a2b3c4d-0038-0038-0038-000000000038",
+      "name": "📋 Update Watchlist: Still Watching",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1640, 900],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets" }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "reservation@agrajk.com",
+        "toEmail": "={{ $json['Reply To Email'] }}",
+        "subject": "=🎉 Reservation Booked: {{ $json['Restaurant Name'] }} on {{ $json['Date Requested'] }}",
+        "emailFormat": "text",
+        "text": "=Great news! I just secured your reservation.\n\nRestaurant: {{ $json['Restaurant Name'] }}\nDate: {{ $json['Date Requested'] }}\nTime: {{ $json['Time Preference'] }}\nParty Size: {{ $json['Party Size'] }}\nConfirmation: {{ $('✅ Watchlist: Book Slot').first().json.reservation_id || 'Confirmed' }}\n\nYour reservation has been removed from the watchlist.\n\nEnjoy your meal!\nRésa",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0039-0039-0039-000000000039",
+      "name": "📤 Notify: Watchlist Booked",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2120, 700],
+      "credentials": {
+        "smtp": { "id": "CRED_SMTP", "name": "reservation@agrajk.com SMTP" }
+      }
+    }
+  ],
+
+  "connections": {
+    "📧 Watch Inbox": {
+      "main": [[{ "node": "📝 Extract Email Data", "type": "main", "index": 0 }]]
+    },
+    "📝 Extract Email Data": {
+      "main": [[{ "node": "🧠 Claude: Parse Intent", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Parse Intent": {
+      "main": [[{ "node": "🔧 Parse Claude Response", "type": "main", "index": 0 }]]
+    },
+    "🔧 Parse Claude Response": {
+      "main": [[{ "node": "🔀 Route by Intent", "type": "main", "index": 0 }]]
+    },
+    "🔀 Route by Intent": {
+      "main": [
+        [{ "node": "🔍 Find Booking Platform", "type": "main", "index": 0 }],
+        [{ "node": "🔍 Search Recommendations", "type": "main", "index": 0 }],
+        [{ "node": "🌐 Check Advance Booking Window", "type": "main", "index": 0 }],
+        [{ "node": "🗑️ Remove from Watchlist", "type": "main", "index": 0 }],
+        [{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Find Booking Platform": {
+      "main": [[{ "node": "🧠 Claude: Identify Platform", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Identify Platform": {
+      "main": [[{ "node": "🔧 Parse Platform Response", "type": "main", "index": 0 }]]
+    },
+    "🔧 Parse Platform Response": {
+      "main": [[{ "node": "🔀 Route by Platform", "type": "main", "index": 0 }]]
+    },
+    "🔀 Route by Platform": {
+      "main": [
+        [{ "node": "🔍 Resy: Find Venue", "type": "main", "index": 0 }],
+        [{ "node": "🍽️ Check OpenTable Availability", "type": "main", "index": 0 }],
+        [{ "node": "🌐 Browserless: Scrape Booking Page", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Resy: Find Venue": {
+      "main": [[{ "node": "🔧 Extract Resy Venue ID", "type": "main", "index": 0 }]]
+    },
+    "🔧 Extract Resy Venue ID": {
+      "main": [[{ "node": "🍽️ Check Resy Availability", "type": "main", "index": 0 }]]
+    },
+    "🍽️ Check Resy Availability": {
+      "main": [[{ "node": "🔧 Check Slot Availability", "type": "main", "index": 0 }]]
+    },
+    "🍽️ Check OpenTable Availability": {
+      "main": [[{ "node": "🔧 Check Slot Availability", "type": "main", "index": 0 }]]
+    },
+    "🌐 Browserless: Scrape Booking Page": {
+      "main": [[{ "node": "🔧 Check Slot Availability", "type": "main", "index": 0 }]]
+    },
+    "🔧 Check Slot Availability": {
+      "main": [[{ "node": "🔀 Available?", "type": "main", "index": 0 }]]
+    },
+    "🔀 Available?": {
+      "main": [
+        [{ "node": "✅ Book on Resy", "type": "main", "index": 0 }],
+        [{ "node": "🔍 Find Similar Restaurants", "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ Book on Resy": {
+      "main": [[{ "node": "🔧 Parse Booking Result", "type": "main", "index": 0 }]]
+    },
+    "✅ Book on OpenTable": {
+      "main": [[{ "node": "🔧 Parse Booking Result", "type": "main", "index": 0 }]]
+    },
+    "🔧 Parse Booking Result": {
+      "main": [[{ "node": "🧠 Claude: Write Confirmation Email", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Write Confirmation Email": {
+      "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "🔍 Find Similar Restaurants": {
+      "main": [[{ "node": "🧠 Claude: Get Alternatives", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Get Alternatives": {
+      "main": [[{ "node": "📋 Add to Watchlist", "type": "main", "index": 0 }]]
+    },
+    "📋 Add to Watchlist": {
+      "main": [[{ "node": "🧠 Claude: Write Unavailable Email", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Write Unavailable Email": {
+      "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "🔍 Search Recommendations": {
+      "main": [[{ "node": "🧠 Claude: Write Recommendations", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Write Recommendations": {
+      "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "🌐 Check Advance Booking Window": {
+      "main": [[{ "node": "🧠 Claude: Write Booking Window Reply", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude: Write Booking Window Reply": {
+      "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "🗑️ Remove from Watchlist": {
+      "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "🔧 Prepare Reply": {
+      "main": [[{ "node": "📤 Send Reply", "type": "main", "index": 0 }]]
+    },
+    "⏰ Watchlist Scheduler": {
+      "main": [[{ "node": "📋 Get Active Watchlist", "type": "main", "index": 0 }]]
+    },
+    "📋 Get Active Watchlist": {
+      "main": [[{ "node": "🔧 Filter Expired Items", "type": "main", "index": 0 }]]
+    },
+    "🔧 Filter Expired Items": {
+      "main": [[{ "node": "🔍 Watchlist: Check Availability", "type": "main", "index": 0 }]]
+    },
+    "🔍 Watchlist: Check Availability": {
+      "main": [[{ "node": "🔧 Evaluate Watchlist Slot", "type": "main", "index": 0 }]]
+    },
+    "🔧 Evaluate Watchlist Slot": {
+      "main": [[{ "node": "🔀 Slot Found?", "type": "main", "index": 0 }]]
+    },
+    "🔀 Slot Found?": {
+      "main": [
+        [{ "node": "✅ Watchlist: Book Slot", "type": "main", "index": 0 }],
+        [{ "node": "📋 Update Watchlist: Still Watching", "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ Watchlist: Book Slot": {
+      "main": [[{ "node": "📋 Update Watchlist: Booked", "type": "main", "index": 0 }]]
+    },
+    "📋 Update Watchlist: Booked": {
+      "main": [[{ "node": "📤 Notify: Watchlist Booked", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+
+  "staticData": null,
+  "tags": ["reservation", "restaurant", "agent"],
+  "triggerCount": 2,
+  "updatedAt": "2026-04-24T00:00:00.000Z",
+  "versionId": "1"
+}
