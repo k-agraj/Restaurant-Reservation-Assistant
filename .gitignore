@@ -1,0 +1,14 @@
+# Environment / secrets
+.env
+.env.*
+*.local
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# n8n local exports / logs
+*.log
