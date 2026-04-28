@@ -69,6 +69,62 @@
     },
     {
       "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst intent = data.intent;\n\nconst required = {\n  BOOK_RESERVATION:   ['restaurant_name', 'date', 'party_size'],\n  CHECK_AVAILABILITY: ['restaurant_name'],\n  REMOVE_WATCHLIST:   ['restaurant_name'],\n  FIND_RESTAURANTS:   []\n};\n\nconst labels = {\n  restaurant_name: 'restaurant name',\n  date:            'date for the reservation',\n  party_size:      'number of guests'\n};\n\nconst fields = required[intent] || [];\nconst missing = fields.filter(f => !data[f]);\n\nlet missingMessage = '';\nif (missing.length > 0) {\n  const subject = data.originalSubject || 'your reservation request';\n  missingMessage = `Hi${data.fromName ? ' ' + data.fromName.split(' ')[0] : ''},\\n\\n`;\n\n  if (intent === 'BOOK_RESERVATION') {\n    missingMessage += \"I'd love to help book your table! To get started I just need a few more details:\\n\\n\";\n    if (!data.restaurant_name) missingMessage += '• Which restaurant would you like to book?\\n';\n    if (!data.date)            missingMessage += '• What date are you looking for?\\n';\n    if (!data.party_size)      missingMessage += '• How many guests will be joining?\\n';\n  } else if (intent === 'CHECK_AVAILABILITY') {\n    missingMessage += 'I can look up the booking window for you — which restaurant did you have in mind?\\n';\n  } else if (intent === 'REMOVE_WATCHLIST') {\n    missingMessage += 'Which restaurant would you like me to remove from your watchlist?\\n';\n  }\n\n  missingMessage += '\\nReply with the details above and I will get right on it.\\n\\nBest,\\nRésa';\n}\n\nreturn [{ json: { ...data, isValid: missing.length === 0, missingFields: missing, missingMessage } }];"
+      },
+      "id": "1a2b3c4d-0042-0042-0042-000000000042",
+      "name": "🔧 Validate Required Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.isValid }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "complete"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "1a2b3c4d-0043-0043-0043-000000000043",
+      "name": "🔀 Fields Complete?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1400, 400]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reservation@agrajk.com",
+        "toEmail": "={{ $json.fromEmail }}",
+        "subject": "=Re: {{ $json.originalSubject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.missingMessage }}",
+        "options": { "replyTo": "reservation@agrajk.com" }
+      },
+      "id": "1a2b3c4d-0044-0044-0044-000000000044",
+      "name": "📤 Request Missing Info",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1640, 600],
+      "credentials": {
+        "smtp": { "id": "CRED_SMTP", "name": "reservation@agrajk.com SMTP" }
+      }
+    },
+
+    {
+      "parameters": {
         "rules": {
           "values": [
             {
@@ -1022,7 +1078,16 @@
       "ai_languageModel": [[{ "node": "🦙 Ollama: Parse Intent", "type": "ai_languageModel", "index": 0 }]]
     },
     "🔧 Parse Claude Response": {
-      "main": [[{ "node": "🔀 Route by Intent", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🔧 Validate Required Fields", "type": "main", "index": 0 }]]
+    },
+    "🔧 Validate Required Fields": {
+      "main": [[{ "node": "🔀 Fields Complete?", "type": "main", "index": 0 }]]
+    },
+    "🔀 Fields Complete?": {
+      "main": [
+        [{ "node": "🔀 Route by Intent", "type": "main", "index": 0 }],
+        [{ "node": "📤 Request Missing Info", "type": "main", "index": 0 }]
+      ]
     },
     "🔀 Route by Intent": {
       "main": [
