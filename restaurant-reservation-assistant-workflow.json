@@ -141,7 +141,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.serper.dev/search",
+        "url": "=https://google.serper.dev/search",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -471,7 +471,7 @@
 
     {
       "parameters": {
-        "url": "=https://api.serper.dev/search",
+        "url": "=https://google.serper.dev/search",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -618,7 +618,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.serper.dev/search",
+        "url": "=https://google.serper.dev/search",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -680,8 +680,10 @@
 
     {
       "parameters": {
-        "url": "=https://production-sfo.browserless.io/scrape?token={{ $env.BROWSERLESS_API_TOKEN }}",
         "method": "POST",
+        "url": "=https://production-sfo.browserless.io/scrape",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -689,15 +691,21 @@
           ]
         },
         "sendBody": true,
-        "bodyContentType": "json",
-        "jsonBody": "={{ JSON.stringify({ url: 'https://www.google.com/search?q=' + encodeURIComponent($('🔧 Parse Claude Response').first().json.restaurant_name + ' restaurant reservation how far in advance booking window'), elements: [{selector: '.BNeawe, .kCrYT, .UPmit, h3, .VwiC3b'}], waitFor: 2000 }) }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ { url: 'https://www.google.com/search?q=' + encodeURIComponent($('🔧 Parse Claude Response').first().json.restaurant_name + ' restaurant reservation how far in advance booking window'), elements: [{ selector: '.BNeawe, .kCrYT, .UPmit, h3, .VwiC3b' }], waitFor: 2000 } }}",
         "options": {}
       },
       "id": "1a2b3c4d-0025-0025-0025-000000000025",
       "name": "🌐 Check Advance Booking Window",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 700]
+      "position": [1400, 700],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mcdJEKCRITjD5y0w",
+          "name": "Browserless Auth account"
+        }
+      }
     },
     {
       "parameters": {
