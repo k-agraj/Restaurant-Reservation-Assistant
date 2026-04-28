@@ -34,29 +34,32 @@
     },
     {
       "parameters": {
-        "model": "claude-haiku-4-5-20251001",
-        "options": { "temperature": 0 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=You are an intent classifier for a restaurant reservation agent. Analyze this email and return ONLY a valid JSON object with no other text.\n\nEmail Subject: {{ $json.subject }}\nEmail Body: {{ $json.body }}\n\nClassify the intent into exactly ONE of these categories:\n1. BOOK_RESERVATION - User wants to book a specific restaurant (has restaurant name + date)\n2. FIND_RESTAURANTS - User wants recommendations based on cuisine/vibe/location\n3. CHECK_AVAILABILITY - User wants to know when a restaurant accepts reservations\n4. REMOVE_WATCHLIST - User wants to remove a restaurant from watch list\n5. OTHER - Anything else\n\nAlso extract these fields if present:\n- restaurant_name (string or null)\n- date (string in YYYY-MM-DD format or null)\n- time_preference (string like '7:00 PM' or null)\n- party_size (number or null)\n- location (string or null)\n- cuisine (string or null)\n- vibe (string or null)\n- price_range (string or null)\n- special_requests (string or null)\n- is_flexible_date (boolean - true if user mentioned flexible dates)\n\nReturn format:\n{\"intent\": \"BOOK_RESERVATION\", \"restaurant_name\": \"...\", \"date\": \"...\", \"time_preference\": \"...\", \"party_size\": 2, \"location\": \"...\", \"cuisine\": null, \"vibe\": null, \"price_range\": null, \"special_requests\": null, \"is_flexible_date\": false}"
-            }
-          ]
-        }
+        "prompt": "=You are an intent classifier for a restaurant reservation agent. Analyze this email and return ONLY a valid JSON object with no other text.\n\nEmail Subject: {{ $json.subject }}\nEmail Body: {{ $json.body }}\n\nClassify the intent into exactly ONE of these categories:\n1. BOOK_RESERVATION - User wants to book a specific restaurant (has restaurant name + date)\n2. FIND_RESTAURANTS - User wants recommendations based on cuisine/vibe/location\n3. CHECK_AVAILABILITY - User wants to know when a restaurant accepts reservations\n4. REMOVE_WATCHLIST - User wants to remove a restaurant from watch list\n5. OTHER - Anything else\n\nAlso extract these fields if present:\n- restaurant_name (string or null)\n- date (string in YYYY-MM-DD format or null)\n- time_preference (string like '7:00 PM' or null)\n- party_size (number or null)\n- location (string or null)\n- cuisine (string or null)\n- vibe (string or null)\n- price_range (string or null)\n- special_requests (string or null)\n- is_flexible_date (boolean - true if user mentioned flexible dates)\n\nReturn format:\n{\"intent\": \"BOOK_RESERVATION\", \"restaurant_name\": \"...\", \"date\": \"...\", \"time_preference\": \"...\", \"party_size\": 2, \"location\": \"...\", \"cuisine\": null, \"vibe\": null, \"price_range\": null, \"special_requests\": null, \"is_flexible_date\": false}",
+        "options": {}
       },
       "id": "1a2b3c4d-0003-0003-0003-000000000003",
-      "name": "🧠 Claude: Parse Intent",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Parse Intent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:3b",
+        "options": { "temperature": 0 }
+      },
+      "id": "a1b2c3d4-e001-e001-e001-000000000001",
+      "name": "Ollama: qwen2.5:3b (Parse Intent)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [680, 400],
+      "position": [680, 580],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
     {
       "parameters": {
-        "jsCode": "// Parse Claude's JSON response\nconst raw = $input.first().json.text || $input.first().json.content || '';\nlet parsed;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { intent: 'OTHER', error: 'Parse failed: ' + raw };\n}\n\n// Merge with email data from previous step\nconst emailData = $('📝 Extract Email Data').first().json;\n\nreturn [{\n  json: {\n    ...parsed,\n    fromEmail: emailData.fromEmail,\n    fromName: emailData.fromName,\n    messageId: emailData.messageId,\n    inReplyTo: emailData.inReplyTo,\n    references: emailData.references,\n    originalSubject: emailData.subject,\n    originalBody: emailData.body,\n    receivedAt: emailData.date\n  }\n}];"
+        "jsCode": "// Parse Ollama JSON response\nconst raw = $input.first().json.text || $input.first().json.content || '';\nlet parsed;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { intent: 'OTHER', error: 'Parse failed: ' + raw };\n}\n\n// Merge with email data from previous step\nconst emailData = $('📝 Extract Email Data').first().json;\n\nreturn [{\n  json: {\n    ...parsed,\n    fromEmail: emailData.fromEmail,\n    fromName: emailData.fromName,\n    messageId: emailData.messageId,\n    inReplyTo: emailData.inReplyTo,\n    references: emailData.references,\n    originalSubject: emailData.subject,\n    originalBody: emailData.body,\n    receivedAt: emailData.date\n  }\n}];"
       },
       "id": "1a2b3c4d-0004-0004-0004-000000000004",
       "name": "🔧 Parse Claude Response",
@@ -166,24 +169,27 @@
     },
     {
       "parameters": {
-        "model": "claude-haiku-4-5-20251001",
-        "options": { "temperature": 0 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=Based on these search results, identify the booking platform for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}.\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,5)) }}\n\nReturn ONLY a JSON object:\n{\"platform\": \"resy|opentable|sevenrooms|tock|yelp|direct|unknown\", \"booking_url\": \"direct URL if found or null\", \"restaurant_confirmed\": true/false, \"notes\": \"any relevant info about the restaurant\"}"
-            }
-          ]
-        }
+        "prompt": "=Based on these search results, identify the booking platform for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}.\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,5)) }}\n\nReturn ONLY a JSON object:\n{\"platform\": \"resy|opentable|sevenrooms|tock|yelp|direct|unknown\", \"booking_url\": \"direct URL if found or null\", \"restaurant_confirmed\": true/false, \"notes\": \"any relevant info about the restaurant\"}",
+        "options": {}
       },
       "id": "1a2b3c4d-0007-0007-0007-000000000007",
-      "name": "🧠 Claude: Identify Platform",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Identify Platform",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:3b",
+        "options": { "temperature": 0 }
+      },
+      "id": "a1b2c3d4-e002-e002-e002-000000000002",
+      "name": "Ollama: qwen2.5:3b (Identify Platform)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [1640, 200],
+      "position": [1640, 380],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
     {
@@ -352,28 +358,38 @@
                     "leftValue": "={{ $json.hasAvailability }}",
                     "rightValue": true,
                     "operator": { "type": "boolean", "operation": "true" }
+                  },
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "resy",
+                    "operator": { "type": "string", "operation": "equals" }
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "available"
+              "outputKey": "resy_available"
             },
             {
               "conditions": {
                 "conditions": [
                   {
                     "leftValue": "={{ $json.hasAvailability }}",
-                    "rightValue": false,
-                    "operator": { "type": "boolean", "operation": "false" }
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true" }
+                  },
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "opentable",
+                    "operator": { "type": "string", "operation": "equals" }
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "unavailable"
+              "outputKey": "opentable_available"
             }
           ]
         },
-        "options": {}
+        "options": { "fallbackOutput": "extra" }
       },
       "id": "1a2b3c4d-0014-0014-0014-000000000014",
       "name": "🔀 Available?",
@@ -477,24 +493,27 @@
     },
     {
       "parameters": {
-        "model": "claude-sonnet-4-20250514",
-        "options": { "temperature": 0.3 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=The user requested a reservation at {{ $('🔧 Parse Claude Response').first().json.restaurant_name }} but it's unavailable.\n\nSearch results for similar restaurants: {{ JSON.stringify($json.organic?.slice(0,8)) }}\n\nUser preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'similar to requested restaurant' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'similar' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Date: {{ $('🔧 Parse Claude Response').first().json.date }}\n\nReturn ONLY a JSON array of up to 4 alternative restaurants with 4+ star ratings:\n[{\"name\": \"...\", \"cuisine\": \"...\", \"vibe\": \"...\", \"price_range\": \"...\", \"booking_platform\": \"resy|opentable|other\", \"why_similar\": \"one sentence\", \"rating\": \"4.5/5\", \"address\": \"...\"}]"
-            }
-          ]
-        }
+        "prompt": "=The user requested a reservation at {{ $('🔧 Parse Claude Response').first().json.restaurant_name }} but it's unavailable.\n\nSearch results for similar restaurants: {{ JSON.stringify($json.organic?.slice(0,8)) }}\n\nUser preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'similar to requested restaurant' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'similar' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Date: {{ $('🔧 Parse Claude Response').first().json.date }}\n\nReturn ONLY a JSON array of up to 4 alternative restaurants with 4+ star ratings:\n[{\"name\": \"...\", \"cuisine\": \"...\", \"vibe\": \"...\", \"price_range\": \"...\", \"booking_platform\": \"resy|opentable|other\", \"why_similar\": \"one sentence\", \"rating\": \"4.5/5\", \"address\": \"...\"}]",
+        "options": {}
       },
       "id": "1a2b3c4d-0019-0019-0019-000000000019",
-      "name": "🧠 Claude: Get Alternatives",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Get Alternatives",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [3320, 500]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-r1:7b",
+        "options": { "temperature": 0.3 }
+      },
+      "id": "a1b2c3d4-e003-e003-e003-000000000003",
+      "name": "Ollama: deepseek-r1:7b (Get Alternatives)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [3320, 500],
+      "position": [3320, 680],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
 
@@ -540,46 +559,52 @@
 
     {
       "parameters": {
-        "model": "claude-sonnet-4-20250514",
-        "options": { "temperature": 0.4 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: BOOKING_CONFIRMED\nRestaurant: {{ $json.restaurant_name }}\nDate: {{ $json.date }}\nTime: {{ $json.bookedSlot?.date?.start || $json.time_preference }}\nParty Size: {{ $json.party_size || 2 }}\nConfirmation: {{ $json.confirmationNumber }}\nPlatform: {{ $json.platform }}\nSpecial Requests: {{ $json.special_requests || 'None' }}\n\nWrite a warm, concise confirmation email. Include all booking details. Sign off as Résa. Keep it under 150 words. Do not use em dashes."
-            }
-          ]
-        }
+        "prompt": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: BOOKING_CONFIRMED\nRestaurant: {{ $json.restaurant_name }}\nDate: {{ $json.date }}\nTime: {{ $json.bookedSlot?.date?.start || $json.time_preference }}\nParty Size: {{ $json.party_size || 2 }}\nConfirmation: {{ $json.confirmationNumber }}\nPlatform: {{ $json.platform }}\nSpecial Requests: {{ $json.special_requests || 'None' }}\n\nWrite a warm, concise confirmation email. Include all booking details. Sign off as Résa. Keep it under 150 words. Do not use em dashes.",
+        "options": {}
       },
       "id": "1a2b3c4d-0021-0021-0021-000000000021",
-      "name": "🧠 Claude: Write Confirmation Email",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Write Confirmation Email",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [3560, 100]
+    },
+    {
+      "parameters": {
+        "model": "gemma4:latest",
+        "options": { "temperature": 0.4 }
+      },
+      "id": "a1b2c3d4-e004-e004-e004-000000000004",
+      "name": "Ollama: gemma4:latest (Confirmation Email)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [3560, 100],
+      "position": [3560, 280],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
     {
       "parameters": {
-        "model": "claude-sonnet-4-20250514",
-        "options": { "temperature": 0.4 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: UNAVAILABLE_WITH_ALTERNATIVES\nRequested Restaurant: {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}\nDate: {{ $('🔧 Parse Claude Response').first().json.date }}\nAlternatives found: {{ $('🧠 Claude: Get Alternatives').first().json.text || '[]' }}\nAdded to watchlist: YES - will keep checking automatically\n\nWrite a helpful email:\n1. Apologize the requested restaurant is unavailable\n2. Confirm you have added it to the watchlist and will book automatically when a slot opens\n3. List the alternative restaurants with a brief note on each\n4. Keep it under 200 words. Sign off as Résa. Do not use em dashes."
-            }
-          ]
-        }
+        "prompt": "=You are a concierge assistant named Résa who manages restaurant reservations for Agraj.\n\nWrite a reply email for this scenario:\n\nScenario: UNAVAILABLE_WITH_ALTERNATIVES\nRequested Restaurant: {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}\nDate: {{ $('🔧 Parse Claude Response').first().json.date }}\nAlternatives found: {{ $('🦙 Ollama: Get Alternatives').first().json.text || '[]' }}\nAdded to watchlist: YES - will keep checking automatically\n\nWrite a helpful email:\n1. Apologize the requested restaurant is unavailable\n2. Confirm you have added it to the watchlist and will book automatically when a slot opens\n3. List the alternative restaurants with a brief note on each\n4. Keep it under 200 words. Sign off as Résa. Do not use em dashes.",
+        "options": {}
       },
       "id": "1a2b3c4d-0022-0022-0022-000000000022",
-      "name": "🧠 Claude: Write Unavailable Email",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Write Unavailable Email",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [3800, 500]
+    },
+    {
+      "parameters": {
+        "model": "gemma4:latest",
+        "options": { "temperature": 0.4 }
+      },
+      "id": "a1b2c3d4-e005-e005-e005-000000000005",
+      "name": "Ollama: gemma4:latest (Unavailable Email)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [3800, 500],
+      "position": [3800, 680],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
 
@@ -614,24 +639,27 @@
     },
     {
       "parameters": {
-        "model": "claude-sonnet-4-20250514",
-        "options": { "temperature": 0.4 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=You are a concierge assistant named Résa for Agraj.\n\nUser is looking for restaurant recommendations with these preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'any' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'any' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Price range: {{ $('🔧 Parse Claude Response').first().json.price_range || 'similar to requested' }}\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,10)) }}\n\nWrite a friendly recommendation email with 4-5 restaurants that:\n- Have 4+ star ratings\n- Match the cuisine and vibe requested\n- Include: name, cuisine, vibe, price range, booking platform, why recommended\n- Keep it scannable and under 300 words\n- Sign off as Résa\n- Do not use em dashes"
-            }
-          ]
-        }
+        "prompt": "=You are a concierge assistant named Résa for Agraj.\n\nUser is looking for restaurant recommendations with these preferences:\n- Cuisine: {{ $('🔧 Parse Claude Response').first().json.cuisine || 'any' }}\n- Vibe: {{ $('🔧 Parse Claude Response').first().json.vibe || 'any' }}\n- Location: {{ $('🔧 Parse Claude Response').first().json.location || 'Boston MA area' }}\n- Party size: {{ $('🔧 Parse Claude Response').first().json.party_size || 2 }}\n- Price range: {{ $('🔧 Parse Claude Response').first().json.price_range || 'similar to requested' }}\n\nSearch results: {{ JSON.stringify($json.organic?.slice(0,10)) }}\n\nWrite a friendly recommendation email with 4-5 restaurants that:\n- Have 4+ star ratings\n- Match the cuisine and vibe requested\n- Include: name, cuisine, vibe, price range, booking platform, why recommended\n- Keep it scannable and under 300 words\n- Sign off as Résa\n- Do not use em dashes",
+        "options": {}
       },
       "id": "1a2b3c4d-0024-0024-0024-000000000024",
-      "name": "🧠 Claude: Write Recommendations",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Write Recommendations",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [1640, 500]
+    },
+    {
+      "parameters": {
+        "model": "mistral:7b",
+        "options": { "temperature": 0.4 }
+      },
+      "id": "a1b2c3d4-e006-e006-e006-000000000006",
+      "name": "Ollama: mistral:7b (Recommendations)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [1640, 500],
+      "position": [1640, 680],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
 
@@ -658,24 +686,27 @@
     },
     {
       "parameters": {
-        "model": "claude-sonnet-4-20250514",
-        "options": { "temperature": 0.2 },
-        "messages": {
-          "values": [
-            {
-              "role": "user",
-              "content": "=Based on these search results, what is the advance booking window for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}?\n\nSearch data: {{ JSON.stringify($json) }}\n\nWrite a concise email reply (under 100 words) explaining:\n1. How far in advance reservations open\n2. What time/day slots typically release\n3. Any tips for securing a reservation\n\nSign off as Résa. Do not use em dashes."
-            }
-          ]
-        }
+        "prompt": "=Based on these search results, what is the advance booking window for {{ $('🔧 Parse Claude Response').first().json.restaurant_name }}?\n\nSearch data: {{ JSON.stringify($json) }}\n\nWrite a concise email reply (under 100 words) explaining:\n1. How far in advance reservations open\n2. What time/day slots typically release\n3. Any tips for securing a reservation\n\nSign off as Résa. Do not use em dashes.",
+        "options": {}
       },
       "id": "1a2b3c4d-0026-0026-0026-000000000026",
-      "name": "🧠 Claude: Write Booking Window Reply",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "name": "🦙 Ollama: Write Booking Window Reply",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [1640, 700]
+    },
+    {
+      "parameters": {
+        "model": "mistral:7b",
+        "options": { "temperature": 0.2 }
+      },
+      "id": "a1b2c3d4-e007-e007-e007-000000000007",
+      "name": "Ollama: mistral:7b (Booking Window)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [1640, 700],
+      "position": [1640, 880],
       "credentials": {
-        "anthropicApi": { "id": "CRED_ANTHROPIC", "name": "Anthropic API" }
+        "ollamaApi": { "id": "5E0Ndn0lCerapy0l", "name": "Ollama ai-agrajk-com" }
       }
     },
 
@@ -717,7 +748,7 @@
 
     {
       "parameters": {
-        "jsCode": "// Collect the email body from whichever Claude node ran\nconst nodes = [\n  '🧠 Claude: Write Confirmation Email',\n  '🧠 Claude: Write Unavailable Email', \n  '🧠 Claude: Write Recommendations',\n  '🧠 Claude: Write Booking Window Reply'\n];\n\nlet emailBody = '';\nfor (const nodeName of nodes) {\n  try {\n    const result = $(nodeName).first();\n    if (result && result.json) {\n      emailBody = result.json.text || result.json.content || '';\n      if (emailBody) break;\n    }\n  } catch(e) { continue; }\n}\n\nif (!emailBody) emailBody = 'Thank you for your message. I have processed your request and will follow up shortly.\\n\\nBest,\\nRésa';\n\n// Get original email data\nlet fromEmail, originalSubject, messageId;\ntry {\n  const emailData = $('📝 Extract Email Data').first().json;\n  fromEmail = emailData.fromEmail;\n  originalSubject = emailData.subject;\n  messageId = emailData.messageId;\n} catch(e) {\n  fromEmail = '';\n  originalSubject = 'Re: Your Reservation Request';\n  messageId = '';\n}\n\nconst reSubject = originalSubject.startsWith('Re:') ? originalSubject : 'Re: ' + originalSubject;\n\nreturn [{\n  json: {\n    toEmail: fromEmail,\n    subject: reSubject,\n    body: emailBody,\n    inReplyTo: messageId\n  }\n}];"
+        "jsCode": "// Collect the email body from whichever Ollama node ran\nconst nodes = [\n  '🦙 Ollama: Write Confirmation Email',\n  '🦙 Ollama: Write Unavailable Email', \n  '🦙 Ollama: Write Recommendations',\n  '🦙 Ollama: Write Booking Window Reply'\n];\n\nlet emailBody = '';\nfor (const nodeName of nodes) {\n  try {\n    const result = $(nodeName).first();\n    if (result && result.json) {\n      emailBody = result.json.text || result.json.content || '';\n      if (emailBody) break;\n    }\n  } catch(e) { continue; }\n}\n\nif (!emailBody) emailBody = 'Thank you for your message. I have processed your request and will follow up shortly.\\n\\nBest,\\nRésa';\n\n// Get original email data\nlet fromEmail, originalSubject, messageId;\ntry {\n  const emailData = $('📝 Extract Email Data').first().json;\n  fromEmail = emailData.fromEmail;\n  originalSubject = emailData.subject;\n  messageId = emailData.messageId;\n} catch(e) {\n  fromEmail = '';\n  originalSubject = 'Re: Your Reservation Request';\n  messageId = '';\n}\n\nconst reSubject = originalSubject.startsWith('Re:') ? originalSubject : 'Re: ' + originalSubject;\n\nreturn [{\n  json: {\n    toEmail: fromEmail,\n    subject: reSubject,\n    body: emailBody,\n    inReplyTo: messageId\n  }\n}];"
       },
       "id": "1a2b3c4d-0028-0028-0028-000000000028",
       "name": "🔧 Prepare Reply",
@@ -959,10 +990,13 @@
       "main": [[{ "node": "📝 Extract Email Data", "type": "main", "index": 0 }]]
     },
     "📝 Extract Email Data": {
-      "main": [[{ "node": "🧠 Claude: Parse Intent", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Parse Intent", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Parse Intent": {
+    "🦙 Ollama: Parse Intent": {
       "main": [[{ "node": "🔧 Parse Claude Response", "type": "main", "index": 0 }]]
+    },
+    "Ollama: qwen2.5:3b (Parse Intent)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Parse Intent", "type": "ai_languageModel", "index": 0 }]]
     },
     "🔧 Parse Claude Response": {
       "main": [[{ "node": "🔀 Route by Intent", "type": "main", "index": 0 }]]
@@ -977,10 +1011,13 @@
       ]
     },
     "🔍 Find Booking Platform": {
-      "main": [[{ "node": "🧠 Claude: Identify Platform", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Identify Platform", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Identify Platform": {
+    "🦙 Ollama: Identify Platform": {
       "main": [[{ "node": "🔧 Parse Platform Response", "type": "main", "index": 0 }]]
+    },
+    "Ollama: qwen2.5:3b (Identify Platform)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Identify Platform", "type": "ai_languageModel", "index": 0 }]]
     },
     "🔧 Parse Platform Response": {
       "main": [[{ "node": "🔀 Route by Platform", "type": "main", "index": 0 }]]
@@ -1013,6 +1050,7 @@
     "🔀 Available?": {
       "main": [
         [{ "node": "✅ Book on Resy", "type": "main", "index": 0 }],
+        [{ "node": "✅ Book on OpenTable", "type": "main", "index": 0 }],
         [{ "node": "🔍 Find Similar Restaurants", "type": "main", "index": 0 }]
       ]
     },
@@ -1023,34 +1061,49 @@
       "main": [[{ "node": "🔧 Parse Booking Result", "type": "main", "index": 0 }]]
     },
     "🔧 Parse Booking Result": {
-      "main": [[{ "node": "🧠 Claude: Write Confirmation Email", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Write Confirmation Email", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Write Confirmation Email": {
+    "🦙 Ollama: Write Confirmation Email": {
       "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "Ollama: gemma4:latest (Confirmation Email)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Write Confirmation Email", "type": "ai_languageModel", "index": 0 }]]
     },
     "🔍 Find Similar Restaurants": {
-      "main": [[{ "node": "🧠 Claude: Get Alternatives", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Get Alternatives", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Get Alternatives": {
+    "🦙 Ollama: Get Alternatives": {
       "main": [[{ "node": "📋 Add to Watchlist", "type": "main", "index": 0 }]]
     },
-    "📋 Add to Watchlist": {
-      "main": [[{ "node": "🧠 Claude: Write Unavailable Email", "type": "main", "index": 0 }]]
+    "Ollama: deepseek-r1:7b (Get Alternatives)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Get Alternatives", "type": "ai_languageModel", "index": 0 }]]
     },
-    "🧠 Claude: Write Unavailable Email": {
+    "📋 Add to Watchlist": {
+      "main": [[{ "node": "🦙 Ollama: Write Unavailable Email", "type": "main", "index": 0 }]]
+    },
+    "🦙 Ollama: Write Unavailable Email": {
       "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "Ollama: gemma4:latest (Unavailable Email)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Write Unavailable Email", "type": "ai_languageModel", "index": 0 }]]
     },
     "🔍 Search Recommendations": {
-      "main": [[{ "node": "🧠 Claude: Write Recommendations", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Write Recommendations", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Write Recommendations": {
+    "🦙 Ollama: Write Recommendations": {
       "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "Ollama: mistral:7b (Recommendations)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Write Recommendations", "type": "ai_languageModel", "index": 0 }]]
     },
     "🌐 Check Advance Booking Window": {
-      "main": [[{ "node": "🧠 Claude: Write Booking Window Reply", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "🦙 Ollama: Write Booking Window Reply", "type": "main", "index": 0 }]]
     },
-    "🧠 Claude: Write Booking Window Reply": {
+    "🦙 Ollama: Write Booking Window Reply": {
       "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
+    },
+    "Ollama: mistral:7b (Booking Window)": {
+      "ai_languageModel": [[{ "node": "🦙 Ollama: Write Booking Window Reply", "type": "ai_languageModel", "index": 0 }]]
     },
     "🗑️ Remove from Watchlist": {
       "main": [[{ "node": "🔧 Prepare Reply", "type": "main", "index": 0 }]]
@@ -1097,6 +1150,6 @@
   "staticData": null,
   "tags": ["reservation", "restaurant", "agent"],
   "triggerCount": 2,
-  "updatedAt": "2026-04-24T00:00:00.000Z",
+  "updatedAt": "2026-04-28T00:00:00.000Z",
   "versionId": "1"
 }
