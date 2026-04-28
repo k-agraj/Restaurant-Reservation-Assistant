@@ -140,12 +140,13 @@
 
     {
       "parameters": {
-        "url": "=https://api.serper.dev/search",
         "method": "POST",
+        "url": "=https://api.serper.dev/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-KEY", "value": "={{ $env.SERPER_API_KEY }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
@@ -165,7 +166,13 @@
       "name": "🔍 Find Booking Platform",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 200]
+      "position": [1400, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aXw8JaeoQYIZK2pR",
+          "name": "Serper API Key"
+        }
+      }
     },
     {
       "parameters": {
@@ -610,32 +617,40 @@
 
     {
       "parameters": {
-        "url": "=https://api.serper.dev/search",
         "method": "POST",
+        "url": "=https://api.serper.dev/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-KEY", "value": "={{ $env.SERPER_API_KEY }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
+        "contentType": "json",
         "bodyParameters": {
           "parameters": [
             {
               "name": "q",
               "value": "=best {{ $json.cuisine || '' }} {{ $json.vibe || '' }} restaurants {{ $json.location || 'Boston MA' }} highly rated reservation available 2025"
             },
-            { "name": "num", "value": "10" }
+            { "name": "num", "value": "=10" }
           ]
         },
         "options": {}
       },
-      "id": "1a2b3c4d-0023-0023-0023-000000000023",
+      "id": "8405cf55-f793-41d6-9061-7de8a067434f",
       "name": "🔍 Search Recommendations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 500]
+      "position": [1400, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aXw8JaeoQYIZK2pR",
+          "name": "Serper API Key"
+        }
+      }
     },
     {
       "parameters": {
